@@ -226,3 +226,61 @@
       const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
       const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
       marker.setAttribute("id", "arrowhead");
+      marker.setAttribute("markerWidth", "10");
+      marker.setAttribute("markerHeight", "7");
+      marker.setAttribute("refX", "10");
+      marker.setAttribute("refY", "3.5");
+      marker.setAttribute("orient", "auto");
+
+      const arrowPath = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+      arrowPath.setAttribute("points", "0 0, 10 3.5, 0 7");
+      arrowPath.setAttribute("fill", "red");
+
+      marker.appendChild(arrowPath);
+      defs.appendChild(marker);
+      svg.appendChild(defs);
+      svg.appendChild(line);
+      viewer.appendChild(svg);
+    }
+
+    function makeDraggable(el, note) {
+      let isDragging = false, startX, startY;
+
+      el.onmousedown = e => {
+        isDragging = true;
+        startX = e.clientX - note.x;
+        startY = e.clientY - note.y;
+        e.preventDefault();
+      };
+
+      document.onmousemove = e => {
+        if (!isDragging) return;
+        note.x = e.clientX - startX;
+        note.y = e.clientY - startY;
+        el.style.left = note.x + "px";
+        el.style.top = note.y + "px";
+        saveNotes();
+        renderNotesForSpread();
+      };
+
+      document.onmouseup = () => isDragging = false;
+    }
+
+    viewer.onclick = e => {
+      if (arrowTargeting) {
+        const rect = viewer.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        arrowTargeting.arrow = { x, y };
+        arrowTargeting = null;
+        saveNotes();
+        renderNotesForSpread();
+      } else {
+        const pageHalf = viewer.clientWidth / 2;
+        if (e.clientX < pageHalf) prevPage();
+        else nextPage();
+      }
+    };
+  </script>
+</body>
+</html>
