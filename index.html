@@ -1,170 +1,153 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>Script Viewer</title>
   <style>
     html, body {
       margin: 0;
       padding: 0;
-      height: 100%;
-      background: #111;
+      background: #222;
       color: white;
-      font-family: sans-serif;
       overflow: hidden;
     }
-
-    body.night {
-      background: #eee;
-      color: #111;
-    }
-
-    #toolbar {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      z-index: 10;
-      display: flex;
-      gap: 8px;
-      background: rgba(0, 0, 0, 0.6);
-      padding: 6px 12px;
-      border-radius: 6px;
-    }
-
-    button, select, input[type="file"] {
-      padding: 4px 10px;
-      border-radius: 4px;
-      border: none;
-      background: #444;
-      color: white;
-      cursor: pointer;
-    }
-
-    #pdf-container {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
+    #viewer {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
       display: flex;
       justify-content: center;
       align-items: center;
-      gap: 2vw;
-      overflow: hidden;
     }
-
     canvas {
-      max-height: 100vh;
+      width: 100%;
       height: 100%;
-      width: auto;
-      background: white;
-      box-shadow: 0 0 20px rgba(0,0,0,0.4);
-      cursor: pointer;
     }
-
+    #controls {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 10;
+    }
+    button {
+      margin-left: 5px;
+    }
     .note {
       position: absolute;
       background: yellow;
-      color: black;
-      padding: 6px;
-      border-radius: 6px;
+      padding: 4px;
+      border: 1px solid black;
       resize: both;
       overflow: auto;
-      min-width: 100px;
-      min-height: 60px;
       cursor: move;
-      z-index: 5;
+      z-index: 20;
     }
-
     .note textarea {
-      width: 100%;
-      height: 40px;
+      width: 120px;
+      height: 60px;
       resize: none;
     }
-
+    .note button {
+      margin: 2px 0 0 2px;
+    }
     .arrow {
       position: absolute;
-      height: 2px;
-      background: red;
-      transform-origin: left center;
-      z-index: 4;
+      pointer-events: none;
+      z-index: 15;
     }
-
-    .delete-btn {
+    svg {
       position: absolute;
-      top: 4px;
-      right: 4px;
-      background: red;
-      color: white;
-      border-radius: 50%;
-      border: none;
-      padding: 5px;
-      cursor: pointer;
+      overflow: visible;
+      pointer-events: none;
     }
   </style>
 </head>
 <body>
-  <div id="toolbar">
-    <input type="file" id="fileInput" accept="application/pdf">
-    <button id="fsBtn">⛶ Fullscreen</button>
-    <button id="nightBtn">🌙 Night Mode</button>
-    <button id="addNote">➕ Add Note</button>
-    <button id="bookmark">🔖 Bookmark</button>
-    <select id="sceneJump">
-      <option value="">Jump to Scene</option>
-      <option value="1">Act 1, Scene 1</option>
-      <option value="5">Act 1, Scene 2</option>
-      <option value="11">Act 2, Scene 1</option>
-    </select>
+  <div id="viewer">
+    <canvas id="pdf-canvas"></canvas>
+    <div id="controls">
+      <button onclick="prevPage()">⟨</button>
+      <button onclick="nextPage()">⟩</button>
+      <button onclick="addNote()">➕ Note</button>
+      <button onclick="toggleFullscreen()">⛶</button>
+    </div>
   </div>
 
-  <div id="pdf-container">
-    <canvas id="leftCanvas"></canvas>
-    <canvas id="rightCanvas"></canvas>
-  </div>
+  <input type="file" id="file-input" accept="application/pdf">
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
   <script>
-    const fileInput = document.getElementById('fileInput');
-    const fsBtn = document.getElementById('fsBtn');
-    const nightBtn = document.getElementById('nightBtn');
-    const addNoteBtn = document.getElementById('addNote');
-    const bookmarkBtn = document.getElementById('bookmark');
-    const sceneJump = document.getElementById('sceneJump');
-    const leftCanvas = document.getElementById('leftCanvas');
-    const rightCanvas = document.getElementById('rightCanvas');
-    const container = document.getElementById('pdf-container');
-
-    let pdf = null;
-    let currentPage = 1;
+    let pdfDoc = null, currentPage = 1;
+    const canvas = document.getElementById('pdf-canvas');
+    const ctx = canvas.getContext('2d');
+    const viewer = document.getElementById('viewer');
+    let notes = JSON.parse(localStorage.getItem("pdfNotes") || "{}");
     let arrowTargeting = null;
-    let notes = JSON.parse(localStorage.getItem("notes") || "{}");
 
-    function getSpreadKey(page) {
-      return `${page}-${page + 1}`;
+    document.getElementById('file-input').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      const fileURL = URL.createObjectURL(file);
+      const loadingTask = pdfjsLib.getDocument(fileURL);
+      pdfDoc = await loadingTask.promise;
+      currentPage = 1;
+      renderPage();
+    });
+
+    function renderPage() {
+      if (!pdfDoc) return;
+      pdfDoc.getPage(currentPage).then(page => {
+        const viewport = page.getViewport({ scale: 2 });
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const renderContext = { canvasContext: ctx, viewport };
+        page.render(renderContext).promise.then(() => {
+          renderNotesForSpread();
+        });
+      });
+    }
+
+    function nextPage() {
+      if (currentPage < pdfDoc.numPages) {
+        currentPage++;
+        renderPage();
+      }
+    }
+
+    function prevPage() {
+      if (currentPage > 1) {
+        currentPage--;
+        renderPage();
+      }
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        viewer.requestFullscreen();
+      } else {
+        document.exitFullscreen();
+      }
     }
 
     function saveNotes() {
-      localStorage.setItem("notes", JSON.stringify(notes));
+      localStorage.setItem("pdfNotes", JSON.stringify(notes));
     }
 
-    function renderArrow(note) {
-      const arrow = document.createElement("div");
-      arrow.className = "arrow";
-      const dx = note.targetX - note.x;
-      const dy = note.targetY - note.y;
-      const length = Math.sqrt(dx * dx + dy * dy);
-      const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-      arrow.style.left = note.x + "px";
-      arrow.style.top = note.y + "px";
-      arrow.style.width = length + "px";
-      arrow.style.transform = `rotate(${angle}deg)`;
-      return arrow;
+    function addNote() {
+      const key = currentPage;
+      if (!notes[key]) notes[key] = [];
+
+      const note = {
+        x: 100, y: 100, w: 150, h: 80, text: "Note", arrow: null
+      };
+      notes[key].push(note);
+      saveNotes();
+      renderNotesForSpread();
     }
 
     function renderNotesForSpread() {
-      document.querySelectorAll(".note, .arrow").forEach(el => el.remove());
-      const key = getSpreadKey(currentPage);
+      document.querySelectorAll(".note, svg.arrow").forEach(el => el.remove());
+
+      const key = currentPage;
       if (!notes[key]) return;
 
       notes[key].forEach(note => {
@@ -172,26 +155,29 @@
         noteDiv.className = "note";
         noteDiv.style.left = note.x + "px";
         noteDiv.style.top = note.y + "px";
-        noteDiv.innerHTML = `
-          <textarea>${note.text}</textarea><br>
-          <button class="targetBtn">🎯 Set Target</button>
-          <button class="delete-btn">🗑️</button>
-        `;
-        const arrow = renderArrow(note);
-        container.appendChild(arrow);
-        container.appendChild(noteDiv);
+        noteDiv.style.width = note.w + "px";
+        noteDiv.style.height = note.h + "px";
+        noteDiv.onclick = e => e.stopPropagation();
 
-        const textArea = noteDiv.querySelector("textarea");
+        const textArea = document.createElement("textarea");
+        textArea.value = note.text;
         textArea.oninput = () => {
           note.text = textArea.value;
           saveNotes();
         };
+        textArea.onclick = e => e.stopPropagation();
 
-        noteDiv.querySelector(".targetBtn").onclick = () => {
+        const targetBtn = document.createElement("button");
+        targetBtn.innerText = "🎯";
+        targetBtn.onclick = e => {
+          e.stopPropagation();
           arrowTargeting = note;
         };
 
-        noteDiv.querySelector(".delete-btn").onclick = () => {
+        const deleteBtn = document.createElement("button");
+        deleteBtn.innerText = "🗑️";
+        deleteBtn.onclick = e => {
+          e.stopPropagation();
           const index = notes[key].indexOf(note);
           if (index > -1) {
             notes[key].splice(index, 1);
@@ -200,113 +186,43 @@
           }
         };
 
-        noteDiv.onmousedown = e => {
-          if (e.target.tagName === "TEXTAREA" || e.target.tagName === "BUTTON") return;
-          const offsetX = e.clientX - noteDiv.offsetLeft;
-          const offsetY = e.clientY - noteDiv.offsetTop;
-          document.onmousemove = e => {
-            note.x = e.clientX - offsetX;
-            note.y = e.clientY - offsetY;
-            noteDiv.style.left = note.x + "px";
-            noteDiv.style.top = note.y + "px";
-            const newArrow = renderArrow(note);
-            arrow.style.left = newArrow.style.left;
-            arrow.style.top = newArrow.style.top;
-            arrow.style.width = newArrow.style.width;
-            arrow.style.transform = newArrow.style.transform;
-            saveNotes();
-          };
-          document.onmouseup = () => {
-            document.onmousemove = null;
-          };
-        };
+        noteDiv.appendChild(textArea);
+        noteDiv.appendChild(targetBtn);
+        noteDiv.appendChild(deleteBtn);
+
+        makeDraggable(noteDiv, note);
+        viewer.appendChild(noteDiv);
+
+        if (note.arrow) {
+          drawArrow(noteDiv, note.arrow.x, note.arrow.y);
+        }
       });
     }
 
-    container.onclick = e => {
-      if (arrowTargeting) {
-        arrowTargeting.targetX = e.clientX;
-        arrowTargeting.targetY = e.clientY;
-        arrowTargeting = null;
-        saveNotes();
-        renderNotesForSpread();
-      } else {
-        const rect = leftCanvas.getBoundingClientRect();
-        if (e.clientX < rect.right) {
-          if (currentPage > 1) currentPage -= 2;
-        } else {
-          if (currentPage + 2 <= pdf.numPages) {
-            currentPage += 2;
-          }
-        }
-        renderSpread();
-      }
-    };
+    function drawArrow(fromDiv, x, y) {
+      const fromRect = fromDiv.getBoundingClientRect();
+      const viewerRect = viewer.getBoundingClientRect();
+      const x1 = fromRect.left + fromRect.width / 2 - viewerRect.left;
+      const y1 = fromRect.top + fromRect.height / 2 - viewerRect.top;
+      const x2 = x;
+      const y2 = y;
 
-    addNoteBtn.onclick = () => {
-      const key = getSpreadKey(currentPage);
-      if (!notes[key]) notes[key] = [];
-      const note = {
-        id: Date.now(),
-        x: 200,
-        y: 200,
-        text: "New note",
-        targetX: 300,
-        targetY: 200
-      };
-      notes[key].push(note);
-      saveNotes();
-      renderNotesForSpread();
-    };
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.classList.add("arrow");
+      svg.style.left = "0px";
+      svg.style.top = "0px";
+      svg.setAttribute("width", viewer.clientWidth);
+      svg.setAttribute("height", viewer.clientHeight);
 
-    fsBtn.onclick = () => document.documentElement.requestFullscreen();
-    nightBtn.onclick = () => document.body.classList.toggle("night");
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", x1);
+      line.setAttribute("y1", y1);
+      line.setAttribute("x2", x2);
+      line.setAttribute("y2", y2);
+      line.setAttribute("stroke", "red");
+      line.setAttribute("stroke-width", "2");
+      line.setAttribute("marker-end", "url(#arrowhead)");
 
-    bookmarkBtn.onclick = () => {
-      const bookmarks = JSON.parse(localStorage.getItem("bookmarks") || "[]");
-      if (!bookmarks.includes(currentPage)) {
-        bookmarks.push(currentPage);
-        localStorage.setItem("bookmarks", JSON.stringify(bookmarks));
-        alert("Bookmarked spread starting at page " + currentPage);
-      }
-    };
-
-    sceneJump.onchange = () => {
-      const val = parseInt(sceneJump.value);
-      if (!isNaN(val)) {
-        currentPage = val % 2 === 0 ? val - 1 : val;
-        renderSpread();
-      }
-    };
-
-    async function renderPageToCanvas(pageNum, canvas) {
-      const page = await pdf.getPage(pageNum);
-      const viewport = page.getViewport({ scale: 1 });
-      const scale = window.innerHeight / viewport.height;
-      const scaledViewport = page.getViewport({ scale });
-      canvas.width = scaledViewport.width;
-      canvas.height = scaledViewport.height;
-      await page.render({ canvasContext: canvas.getContext("2d"), viewport: scaledViewport }).promise;
-    }
-
-    async function renderSpread() {
-      if (!pdf) return;
-      await renderPageToCanvas(currentPage, leftCanvas);
-      if (currentPage + 1 <= pdf.numPages) {
-        await renderPageToCanvas(currentPage + 1, rightCanvas);
-      } else {
-        rightCanvas.getContext('2d').clearRect(0, 0, rightCanvas.width, rightCanvas.height);
-      }
-      renderNotesForSpread();
-    }
-
-    fileInput.onchange = async e => {
-      const file = e.target.files[0];
-      const arrayBuffer = await file.arrayBuffer();
-      pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      currentPage = 1;
-      renderSpread();
-    };
-  </script>
-</body>
-</html>
+      const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+      const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+      marker.setAttribute("id", "arrowhead");
