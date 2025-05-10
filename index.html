@@ -89,6 +89,18 @@
       transform-origin: left center;
       z-index: 4;
     }
+
+    .delete-btn {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      background: red;
+      color: white;
+      border-radius: 50%;
+      border: none;
+      padding: 5px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -163,6 +175,7 @@
         noteDiv.innerHTML = `
           <textarea>${note.text}</textarea><br>
           <button class="targetBtn">🎯 Set Target</button>
+          <button class="delete-btn">🗑️</button>
         `;
         const arrow = renderArrow(note);
         container.appendChild(arrow);
@@ -176,6 +189,15 @@
 
         noteDiv.querySelector(".targetBtn").onclick = () => {
           arrowTargeting = note;
+        };
+
+        noteDiv.querySelector(".delete-btn").onclick = () => {
+          const index = notes[key].indexOf(note);
+          if (index > -1) {
+            notes[key].splice(index, 1);
+            saveNotes();
+            renderNotesForSpread();
+          }
         };
 
         noteDiv.onmousedown = e => {
@@ -213,7 +235,9 @@
         if (e.clientX < rect.right) {
           if (currentPage > 1) currentPage -= 2;
         } else {
-          if (currentPage + 2 <= pdf.numPages) currentPage += 2;
+          if (currentPage + 2 <= pdf.numPages) {
+            currentPage += 2;
+          }
         }
         renderSpread();
       }
